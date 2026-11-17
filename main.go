@@ -1,5 +1,5 @@
 // Sistema de Gestión de E-commerce · Programación Orientada a Objetos (Go) · UIDE
-// main solo muestra el menú y pide datos; la lógica vive en los paquetes.
+// main solo muestra el menú y pide datos; la lógica vive en los structs de cada paquete.
 // Ejecutar desde esta carpeta: go run .
 package main
 
@@ -13,8 +13,44 @@ import (
 	"ecommercego/productos"
 )
 
+// Tienda reúne todas las partes del sistema. En el AA1 eran variables sueltas
+// de cada paquete; ahora son campos de un struct, así podría haber dos tiendas
+// independientes (útil para las pruebas y para los servicios web de la ECD).
+type Tienda struct {
+	catalogo *productos.Catalogo
+	clientes *clientes.Registro
+	carritos map[int]*carrito.Carrito // un carrito por ID de cliente
+	pedidos  *pedidos.Gestor
+}
+
+// NewTienda crea una tienda vacía con todo inicializado.
+func NewTienda() *Tienda {
+	return &Tienda{
+		catalogo: productos.NewCatalogo(),
+		clientes: clientes.NewRegistro(),
+		carritos: make(map[int]*carrito.Carrito),
+		pedidos:  pedidos.NewGestor(),
+	}
+}
+
+// carritoDe devuelve el carrito del cliente; si aún no tiene uno, lo crea.
+// Primero comprueba que el cliente exista, para no crear carritos huérfanos.
+func (t *Tienda) carritoDe(clienteID int) (*carrito.Carrito, error) {
+	cli, err := t.clientes.Buscar(clienteID)
+	if err != nil {
+		return nil, err
+	}
+	c, ok := t.carritos[clienteID]
+	if !ok {
+		c = carrito.New(cli)
+		t.carritos[clienteID] = c
+	}
+	return c, nil
+}
+
 func main() {
-	cargarDatosDemo()
+	t := NewTienda()
+	t.cargarDatosDemo()
 
 	for {
 		mostrarMenu()
@@ -26,32 +62,31 @@ func main() {
 
 		switch opcion {
 		case 1:
-			opcionAgregarProducto()
+			t.opcionAgregarProducto()
 		case 2:
-			imprimir("CATALOGO", productos.ListarProductos())
+			t.opcionVerCatalogo()
 		case 3:
-			opcionBuscarProducto()
+			t.opcionBuscarProducto()
 		case 4:
-			opcionActualizarPrecio()
+			t.opcionCambiarPrecio()
 		case 5:
-			opcionEliminarProducto()
+			t.opcionEliminarProducto()
 		case 6:
-			opcionRegistrarCliente()
+			t.opcionRegistrarCliente()
 		case 7:
-			imprimir("CLIENTES", clientes.ListarClientes())
+			t.opcionVerClientes()
 		case 8:
-			opcionAgregarAlCarrito()
+			t.opcionAgregarAlCarrito()
 		case 9:
-			opcionVerCarrito()
+			t.opcionVerCarrito()
 		case 10:
-			opcionQuitarDelCarrito()
+			t.opcionQuitarDelCarrito()
 		case 11:
-			opcionConfirmarPedido()
+			t.opcionConfirmarPedido()
 		case 12:
-			imprimir("PEDIDOS", pedidos.ListarPedidos())
-			fmt.Printf("Total vendido: $%.2f\n", pedidos.TotalVendido())
+			t.opcionVerPedidos()
 		case 13:
-			opcionCancelarPedido()
+			t.opcionCancelarPedido()
 		case 0:
 			fmt.Println("Gracias, hasta pronto")
 			return
@@ -71,18 +106,8 @@ func mostrarMenu() {
 	fmt.Println("             0) Salir")
 }
 
-// imprimir muestra un título y una lista de líneas (o un aviso si está vacía).
-func imprimir(titulo string, lineas []string) {
-	fmt.Println("---", titulo, "---")
-	if len(lineas) == 0 {
-		fmt.Println("(no hay datos todavia)")
-	}
-	for _, l := range lineas {
-		fmt.Println(l)
-	}
-}
-
 // mostrarResultado imprime el error si lo hay; si no, el mensaje de éxito.
+// Centraliza el manejo: ningún error del sistema se ignora en el menú.
 func mostrarResultado(err error, exito string) {
 	if err != nil {
 		fmt.Println("Error:", err)
@@ -91,82 +116,255 @@ func mostrarResultado(err error, exito string) {
 	fmt.Println(exito)
 }
 
-func opcionAgregarProducto() {
+// leerNumero pide un entero y avisa si lo escrito no es un número.
+// Devuelve ok=false para que la opción se cancele sin seguir pidiendo datos.
+func leerNumero(mensaje string) (int, bool) {
+	n, err := entrada.LeerEntero(mensaje)
+	if err != nil {
+		fmt.Println("Error: debes escribir un numero entero")
+		return 0, false
+	}
+	return n, true
+}
+
+// ---------------- PRODUCTOS ----------------
+
+func (t *Tienda) opcionAgregarProducto() {
 	nombre := entrada.LeerTexto("Nombre: ")
-	precio, err1 := entrada.LeerDecimal("Precio: ")
-	stock, err2 := entrada.LeerEntero("Stock: ")
-	if err1 != nil || err2 != nil {
-		fmt.Println("Error: precio o stock no son numeros")
+	precio, err := entrada.LeerDecimal("Precio: ")
+	if err != nil {
+		fmt.Println("Error: el precio debe ser un numero")
 		return
 	}
-	id, err := productos.AgregarProducto(nombre, precio, stock)
-	mostrarResultado(err, fmt.Sprintf("Producto agregado con ID %d", id))
+	stock, ok := leerNumero("Stock: ")
+	if !ok {
+		return
+	}
+	p, err := t.catalogo.Agregar(nombre, precio, stock)
+	if err != nil {
+		mostrarResultado(err, "")
+		return
+	}
+	fmt.Println("Producto agregado:", p) // usa Producto.String()
 }
 
-func opcionBuscarProducto() {
-	id, _ := entrada.LeerEntero("ID del producto: ")
-	nombre, precio, stock, err := productos.BuscarProducto(id)
-	mostrarResultado(err, fmt.Sprintf("%s - $%.2f - stock %d", nombre, precio, stock))
+func (t *Tienda) opcionVerCatalogo() {
+	fmt.Println("--- CATALOGO ---")
+	lista := t.catalogo.Listar()
+	if len(lista) == 0 {
+		fmt.Println("(no hay productos)")
+	}
+	for _, p := range lista {
+		fmt.Println(p)
+	}
 }
 
-func opcionActualizarPrecio() {
-	id, _ := entrada.LeerEntero("ID del producto: ")
+func (t *Tienda) opcionBuscarProducto() {
+	id, ok := leerNumero("ID del producto: ")
+	if !ok {
+		return
+	}
+	p, err := t.catalogo.Buscar(id)
+	if err != nil {
+		mostrarResultado(err, "")
+		return
+	}
+	fmt.Println(p)
+}
+
+func (t *Tienda) opcionCambiarPrecio() {
+	id, ok := leerNumero("ID del producto: ")
+	if !ok {
+		return
+	}
+	p, err := t.catalogo.Buscar(id)
+	if err != nil {
+		mostrarResultado(err, "")
+		return
+	}
 	precio, err := entrada.LeerDecimal("Nuevo precio: ")
 	if err != nil {
-		fmt.Println("Error: el precio no es un numero")
+		fmt.Println("Error: el precio debe ser un numero")
 		return
 	}
-	mostrarResultado(productos.ActualizarPrecio(id, precio), "Precio actualizado")
+	// El setter valida: un precio de 0 o negativo devuelve error y no se aplica.
+	mostrarResultado(p.SetPrecio(precio), "Precio actualizado: "+p.String())
 }
 
-func opcionEliminarProducto() {
-	id, _ := entrada.LeerEntero("ID del producto: ")
-	mostrarResultado(productos.EliminarProducto(id), "Producto eliminado")
+func (t *Tienda) opcionEliminarProducto() {
+	id, ok := leerNumero("ID del producto: ")
+	if !ok {
+		return
+	}
+	mostrarResultado(t.catalogo.Eliminar(id), "Producto eliminado")
 }
 
-func opcionRegistrarCliente() {
+// ---------------- CLIENTES ----------------
+
+func (t *Tienda) opcionRegistrarCliente() {
 	nombre := entrada.LeerTexto("Nombre: ")
 	correo := entrada.LeerTexto("Correo: ")
-	id, err := clientes.RegistrarCliente(nombre, correo)
-	mostrarResultado(err, fmt.Sprintf("Cliente registrado con ID %d", id))
+	c, err := t.clientes.Registrar(nombre, correo)
+	if err != nil {
+		mostrarResultado(err, "")
+		return
+	}
+	fmt.Println("Cliente registrado:", c)
 }
 
-func opcionAgregarAlCarrito() {
-	cliente, _ := entrada.LeerEntero("ID del cliente: ")
-	producto, _ := entrada.LeerEntero("ID del producto: ")
-	unidades, _ := entrada.LeerEntero("Unidades: ")
-	mostrarResultado(carrito.AgregarAlCarrito(cliente, producto, unidades), "Agregado al carrito")
-}
-
-func opcionVerCarrito() {
-	cliente, _ := entrada.LeerEntero("ID del cliente: ")
-	imprimir("CARRITO", carrito.VerCarrito(cliente))
-	if total, err := carrito.CalcularTotal(cliente); err == nil {
-		fmt.Printf("Subtotal: $%.2f (envio gratis desde $50)\n", total)
+func (t *Tienda) opcionVerClientes() {
+	fmt.Println("--- CLIENTES ---")
+	for _, c := range t.clientes.Listar() {
+		fmt.Println(c)
 	}
 }
 
-func opcionQuitarDelCarrito() {
-	cliente, _ := entrada.LeerEntero("ID del cliente: ")
-	producto, _ := entrada.LeerEntero("ID del producto: ")
-	mostrarResultado(carrito.QuitarDelCarrito(cliente, producto), "Producto quitado del carrito")
+// ---------------- CARRITO ----------------
+
+func (t *Tienda) opcionAgregarAlCarrito() {
+	clienteID, ok := leerNumero("ID del cliente: ")
+	if !ok {
+		return
+	}
+	c, err := t.carritoDe(clienteID)
+	if err != nil {
+		mostrarResultado(err, "")
+		return
+	}
+	productoID, ok := leerNumero("ID del producto: ")
+	if !ok {
+		return
+	}
+	p, err := t.catalogo.Buscar(productoID)
+	if err != nil {
+		mostrarResultado(err, "")
+		return
+	}
+	unidades, ok := leerNumero("Unidades: ")
+	if !ok {
+		return
+	}
+	mostrarResultado(c.Agregar(p, unidades), "Agregado al carrito")
 }
 
-func opcionConfirmarPedido() {
-	cliente, _ := entrada.LeerEntero("ID del cliente: ")
-	id, total, err := pedidos.ConfirmarPedido(cliente)
-	mostrarResultado(err, fmt.Sprintf("Pedido %d confirmado. Total a pagar: $%.2f", id, total))
+func (t *Tienda) opcionVerCarrito() {
+	clienteID, ok := leerNumero("ID del cliente: ")
+	if !ok {
+		return
+	}
+	c, err := t.carritoDe(clienteID)
+	if err != nil {
+		mostrarResultado(err, "")
+		return
+	}
+	fmt.Println("--- CARRITO de", c.Cliente().Nombre(), "---")
+	if c.EstaVacio() {
+		fmt.Println("(vacio)")
+		return
+	}
+	for _, it := range c.Items() {
+		fmt.Printf("#%d %-22s x%d  $%.2f\n", it.Producto().ID(), it.Producto().Nombre(),
+			it.Cantidad(), it.Subtotal())
+	}
+	fmt.Printf("Subtotal: $%.2f\n", c.Subtotal())
 }
 
-func opcionCancelarPedido() {
-	id, _ := entrada.LeerEntero("ID del pedido: ")
-	mostrarResultado(pedidos.CancelarPedido(id), "Pedido cancelado y stock devuelto")
+func (t *Tienda) opcionQuitarDelCarrito() {
+	clienteID, ok := leerNumero("ID del cliente: ")
+	if !ok {
+		return
+	}
+	c, err := t.carritoDe(clienteID)
+	if err != nil {
+		mostrarResultado(err, "")
+		return
+	}
+	productoID, ok := leerNumero("ID del producto: ")
+	if !ok {
+		return
+	}
+	mostrarResultado(c.Quitar(productoID), "Producto quitado del carrito")
 }
 
-// cargarDatosDemo agrega algunos datos para probar el sistema sin escribir todo a mano.
-func cargarDatosDemo() {
-	productos.AgregarProducto("Audifonos Bluetooth", 25.00, 10)
-	productos.AgregarProducto("Mouse inalambrico", 12.50, 20)
-	productos.AgregarProducto("Teclado mecanico", 45.90, 5)
-	clientes.RegistrarCliente("Ana Torres", "ana@correo.com")
+// ---------------- PEDIDOS ----------------
+
+func (t *Tienda) opcionConfirmarPedido() {
+	clienteID, ok := leerNumero("ID del cliente: ")
+	if !ok {
+		return
+	}
+	c, err := t.carritoDe(clienteID)
+	if err != nil {
+		mostrarResultado(err, "")
+		return
+	}
+	if c.EstaVacio() {
+		mostrarResultado(pedidos.ErrCarritoVacio, "")
+		return
+	}
+
+	// Polimorfismo: se recorre un slice de la interfaz MetodoEnvio y cada
+	// implementación calcula su propio costo para el mismo subtotal.
+	metodos := pedidos.MetodosDisponibles()
+	fmt.Printf("Subtotal: $%.2f. Elige el envio:\n", c.Subtotal())
+	for i, m := range metodos {
+		fmt.Printf("  %d) %-17s $%.2f  (%d dia(s))\n", i+1, m.Nombre(), m.Costo(c.Subtotal()), m.DiasEntrega())
+	}
+	n, ok := leerNumero("Envio: ")
+	if !ok {
+		return
+	}
+	if n < 1 || n > len(metodos) {
+		fmt.Println("Error: ese metodo de envio no existe")
+		return
+	}
+
+	p, err := t.pedidos.Confirmar(c, metodos[n-1])
+	if err != nil {
+		mostrarResultado(err, "")
+		return
+	}
+	fmt.Printf("Pedido %d confirmado. Total a pagar: $%.2f\n", p.ID(), p.Total())
+}
+
+func (t *Tienda) opcionVerPedidos() {
+	fmt.Println("--- PEDIDOS ---")
+	lista := t.pedidos.Listar()
+	if len(lista) == 0 {
+		fmt.Println("(no hay pedidos)")
+	}
+	for _, p := range lista {
+		fmt.Println(p)
+	}
+	fmt.Printf("Total vendido: $%.2f\n", t.pedidos.TotalVendido())
+}
+
+func (t *Tienda) opcionCancelarPedido() {
+	id, ok := leerNumero("ID del pedido: ")
+	if !ok {
+		return
+	}
+	mostrarResultado(t.pedidos.Cancelar(id), "Pedido cancelado y stock devuelto")
+}
+
+// cargarDatosDemo agrega datos de ejemplo para probar el sistema enseguida.
+// Si alguno fallara, se avisa en lugar de ignorar el error.
+func (t *Tienda) cargarDatosDemo() {
+	demo := []struct {
+		nombre string
+		precio float64
+		stock  int
+	}{
+		{"Audifonos Bluetooth", 25.00, 10},
+		{"Mouse inalambrico", 12.50, 20},
+		{"Teclado mecanico", 45.90, 5},
+	}
+	for _, d := range demo {
+		if _, err := t.catalogo.Agregar(d.nombre, d.precio, d.stock); err != nil {
+			fmt.Println("Aviso: no se cargo", d.nombre, "->", err)
+		}
+	}
+	if _, err := t.clientes.Registrar("Ana Torres", "ana@correo.com"); err != nil {
+		fmt.Println("Aviso: no se cargo el cliente demo ->", err)
+	}
 }

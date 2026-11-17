@@ -2,104 +2,12 @@
 
 Proyecto del curso **Programación Orientada a Objetos (Go)** · UIDE · 2026
 Autor: **Jhamir Rivera**
-Entrega actual: **Aprendizaje Autónomo 1 · Planeación del sistema** (funciones y paquetes)
+Entrega actual: **Aprendizaje Autónomo 2 · Desarrollo del sistema** (structs, encapsulación, errores e interfaces)
+Entrega anterior: Aprendizaje Autónomo 1 · Planeación (funciones y paquetes), ver `docs/`.
 
 ## Objetivo
 
-Permitir que una tienda en línea pequeña gestione su **catálogo de productos**, sus **clientes**, el **carrito de compras** y los **pedidos**, con control de stock y total de ventas, desde un programa escrito en Go.
-
-## Alcance
-
-**Sí hace:**
-- Registrar, consultar, cambiar de precio y eliminar productos, con control de stock.
-- Registrar y consultar clientes, validando el correo.
-- Armar un carrito por cliente con subtotales.
-- Confirmar pedidos (descuenta stock y calcula envío: gratis desde $50; si no, $3.50).
-- Cancelar pedidos (devuelve el stock) y mostrar el total vendido.
-
-**No hace (fuera del alcance):**
-- Pagos reales con tarjeta ni facturación electrónica.
-- Envíos ni seguimiento de paquetes.
-- Inicio de sesión con contraseña.
-- Guardar datos en una base de datos: por ahora todo vive en memoria mientras el programa corre.
-
-## Módulos y paquetes
-
-```
-EcommerceGo/                 módulo: ecommercego
-├── go.mod
-├── main.go                  menú de consola (solo pide datos y llama a los paquetes)
-├── productos/productos.go   catálogo y stock
-├── clientes/clientes.go     registro de clientes
-├── carrito/carrito.go       carrito de compras por cliente
-├── pedidos/pedidos.go       confirmar, cancelar y total vendido
-├── entrada/entrada.go       lectura del teclado
-├── docs/                    PDF de la planeación
-└── practicas/semana01/      menú de la semana 1 (versión anterior)
-```
-
-Dependencias entre paquetes: `main` usa todos los paquetes; `pedidos` usa `carrito`, `clientes` y `productos`; `carrito` usa `clientes` y `productos`.
-
-### Funciones por módulo
-
-**productos**
-
-| Función | Parámetros | Retorna | Qué hace |
-|---|---|---|---|
-| `AgregarProducto` | `nombre string, precio float64, unidades int` | `int, error` | Registra un producto y devuelve su ID |
-| `ListarProductos` | — | `[]string` | Lista el catálogo |
-| `BuscarProducto` | `id int` | `string, float64, int, error` | Devuelve nombre, precio y stock |
-| `ActualizarPrecio` | `id int, nuevoPrecio float64` | `error` | Cambia el precio |
-| `EliminarProducto` | `id int` | `error` | Quita el producto del catálogo |
-| `Existe` | `id int` | `bool` | Indica si el producto existe |
-| `DescontarStock` | `id int, unidades int` | `error` | Resta stock al vender |
-| `DevolverStock` | `id int, unidades int` | `error` | Suma stock al cancelar |
-| `precioValido` *(interna)* | `precio float64` | `bool` | Valida que el precio sea mayor que 0 |
-
-**clientes**
-
-| Función | Parámetros | Retorna | Qué hace |
-|---|---|---|---|
-| `RegistrarCliente` | `nombre string, correo string` | `int, error` | Registra un cliente y devuelve su ID |
-| `BuscarCliente` | `id int` | `string, string, error` | Devuelve nombre y correo |
-| `ListarClientes` | — | `[]string` | Lista los clientes |
-| `Existe` | `id int` | `bool` | Indica si el cliente existe |
-| `correoValido` *(interna)* | `correo string` | `bool` | Revisa que tenga `@` y `.` |
-| `correoRegistrado` *(interna)* | `correo string` | `bool` | Evita correos repetidos |
-
-**carrito**
-
-| Función | Parámetros | Retorna | Qué hace |
-|---|---|---|---|
-| `AgregarAlCarrito` | `clienteID int, productoID int, unidades int` | `error` | Añade unidades validando el stock |
-| `QuitarDelCarrito` | `clienteID int, productoID int` | `error` | Saca un producto del carrito |
-| `VerCarrito` | `clienteID int` | `[]string` | Lista el carrito con subtotales |
-| `CalcularTotal` | `clienteID int` | `float64, error` | Suma el carrito (sin envío) |
-| `Contenido` | `clienteID int` | `map[int]int` | Copia del carrito para `pedidos` |
-| `VaciarCarrito` | `clienteID int` | — | Deja el carrito vacío |
-| `idsOrdenados` *(interna)* | `clienteID int` | `[]int` | Ordena los productos del carrito |
-
-**pedidos**
-
-| Función | Parámetros | Retorna | Qué hace |
-|---|---|---|---|
-| `ConfirmarPedido` | `clienteID int` | `int, float64, error` | Compra el carrito: descuenta stock y devuelve ID y total |
-| `CancelarPedido` | `pedidoID int` | `error` | Cancela y devuelve el stock |
-| `ListarPedidos` | — | `[]string` | Lista los pedidos con su estado |
-| `TotalVendido` | — | `float64` | Suma los pedidos confirmados |
-| `calcularEnvio` *(interna)* | `subtotal float64` | `float64` | Envío gratis desde $50; si no, $3.50 |
-
-**entrada**
-
-| Función | Parámetros | Retorna | Qué hace |
-|---|---|---|---|
-| `LeerTexto` | `mensaje string` | `string` | Lee una línea (acepta espacios) |
-| `LeerEntero` | `mensaje string` | `int, error` | Lee un número entero |
-| `LeerDecimal` | `mensaje string` | `float64, error` | Lee un decimal (con coma o punto) |
-
-## Paquetes externos
-
-No se usan paquetes de terceros: todo se resuelve con la biblioteca estándar de Go (`fmt`, `errors`, `strings`, `strconv`, `sort`, `bufio`, `os`). Así el proyecto compila sin `go get`. Si más adelante hace falta uno, se instalará con `go get` y se documentará aquí.
+Permitir que una tienda en línea pequeña gestione su **catálogo de productos**, sus **clientes**, el **carrito de compras** y los **pedidos**, con control de stock, métodos de envío y total de ventas, desde un programa escrito en Go.
 
 ## Cómo ejecutarlo
 
@@ -107,14 +15,122 @@ Requisito: Go 1.22 o superior.
 
 ```bash
 go build ./...   # comprueba que todo compila
+go test ./...    # ejecuta las pruebas
 go run .         # abre el menú
 ```
 
-El programa arranca con 3 productos y 1 cliente de ejemplo para poder probarlo enseguida.
+El programa arranca con 3 productos y 1 cliente de ejemplo (Ana Torres, ID 1).
 
-## Funcionalidades (futuros servicios web)
+## Estructura
 
-| # | Funcionalidad | Servicio web previsto (ECD) |
+```
+EcommerceGo/                   módulo: ecommercego
+├── main.go                    struct Tienda + menú (solo pide datos y muestra resultados)
+├── productos/productos.go     struct Producto y struct Catalogo
+├── clientes/clientes.go       struct Cliente y struct Registro
+├── carrito/carrito.go         struct Item y struct Carrito
+├── pedidos/envio.go           interfaz MetodoEnvio y sus 3 implementaciones
+├── pedidos/pedidos.go         struct Linea, struct Pedido y struct Gestor
+├── entrada/entrada.go         lectura del teclado
+├── */*_test.go                pruebas de validaciones, errores e interfaz
+└── docs/                      documentos del AA1 y AA2
+```
+
+## Del AA1 al AA2: de funciones sueltas a structs con métodos
+
+| Funcionalidad (AA1) | Función en el AA1 | Ahora en el AA2 |
+|---|---|---|
+| 1 Agregar producto | `productos.AgregarProducto` | `Catalogo.Agregar` → usa `NewProducto` |
+| 2 Ver catálogo | `productos.ListarProductos` | `Catalogo.Listar` + `Producto.String` |
+| 3 Buscar producto | `productos.BuscarProducto` | `Catalogo.Buscar` |
+| 4 Cambiar precio | `productos.ActualizarPrecio` | `Producto.SetPrecio` (valida) |
+| 5 Eliminar producto | `productos.EliminarProducto` | `Catalogo.Eliminar` |
+| 6 Registrar cliente | `clientes.RegistrarCliente` | `Registro.Registrar` → usa `NewCliente` |
+| 7 Ver clientes | `clientes.ListarClientes` | `Registro.Listar` |
+| 8 Agregar al carrito | `carrito.AgregarAlCarrito` | `Carrito.Agregar` |
+| 9 Ver carrito | `carrito.VerCarrito` | `Carrito.Items` + `Carrito.Subtotal` |
+| 10 Quitar del carrito | `carrito.QuitarDelCarrito` | `Carrito.Quitar` |
+| 11 Confirmar pedido | `pedidos.ConfirmarPedido` | `Gestor.Confirmar(carrito, MetodoEnvio)` |
+| 12 Ver pedidos | `pedidos.ListarPedidos` | `Gestor.Listar` + `Gestor.TotalVendido` |
+| 13 Cancelar pedido | `pedidos.CancelarPedido` | `Gestor.Cancelar` |
+
+Las **13 funcionalidades** del AA1 funcionan, y se agregó la elección del **método de envío**.
+
+## Decisiones de diseño
+
+### 1. ¿Por qué estas entidades?
+
+- **Producto, Cliente, Pedido**: son los sustantivos del negocio; cada uno tiene datos y reglas propias (un producto no puede tener precio negativo, un cliente necesita un correo válido, un pedido no se cancela dos veces).
+- **Carrito e Item**: el carrito existe antes del pedido y cambia mucho; separarlo evita pedidos "a medio armar".
+- **Linea** (de pedido) es distinta de **Item** (de carrito): la línea **copia el nombre y el precio** al momento de comprar. Si mañana el producto sube de precio, el pedido histórico no cambia.
+- **Catalogo, Registro, Gestor** son los "dueños" de cada colección. En el AA1 eran maps sueltos a nivel de paquete; ahora son campos de un struct, y `Tienda` los agrupa. Así se pueden crear tiendas independientes (por ejemplo, en las pruebas).
+
+### 2. Receptor de valor o puntero
+
+| Receptor | Cuándo | Ejemplos |
+|---|---|---|
+| **Valor** `(p Producto)` | El método solo **lee**; trabajar con una copia no afecta | `Nombre()`, `Precio()`, `HayStock()`, `String()`, `Costo()` |
+| **Puntero** `(p *Producto)` | El método **modifica** el original | `SetPrecio()`, `DescontarStock()`, `Carrito.Agregar()`, `Catalogo.Eliminar()` |
+
+Los constructores devuelven **punteros** (`*Producto`) porque el catálogo, el carrito y el pedido deben compartir **el mismo** producto: cuando se vende, todos ven el stock actualizado. Si se guardaran copias, cada uno tendría un stock distinto.
+
+### 3. Slice o map
+
+| Estructura | Dónde | Por qué |
+|---|---|---|
+| `map[int]*Producto` | `Catalogo` | La operación más usada es **buscar por ID** (carrito, pedidos, menú). |
+| `map[int]*Cliente` | `Registro` | Igual: se busca por ID al armar carritos. |
+| `map[int]*Carrito` | `Tienda` | Un carrito por cliente, se accede por el ID del cliente. |
+| `[]Item` | `Carrito` | **Importa el orden** en que se agregaron, y son pocas líneas. |
+| `[]Linea` | `Pedido` | El detalle se muestra en orden. |
+| `[]*Pedido` | `Gestor` | Historial **cronológico**; siempre se listan todos. |
+
+Como los maps no tienen orden fijo, `Listar()` los pasa a un slice y los ordena por ID.
+
+### 4. Encapsulación
+
+- Todos los campos de los structs están en **minúscula** (no exportados): desde `main` no se puede escribir `p.precio = -5`.
+- Se leen con **getters** al estilo Go (`Precio()`, no `GetPrecio()`).
+- Se cambian con **setters** que usan receptor puntero y **validan** (`SetPrecio`, `SetNombre`, `SetCorreo`). Si el valor no es válido, devuelven un error y el dato no cambia.
+- `Carrito.Items()`, `Pedido.Lineas()` y `Gestor.Listar()` devuelven **copias** del slice, para que nadie modifique la colección por fuera de los métodos.
+- `Pedido.cancelar()` es interno: solo `Gestor.Cancelar` puede cancelar, así el stock y el historial siempre quedan coherentes.
+
+### 5. Manejo de errores
+
+- Toda función que puede fallar devuelve `error` como último valor, y quien la llama lo revisa (en el menú, `mostrarResultado`).
+- Cada paquete declara **errores base** (`ErrNoExiste`, `ErrPrecio`, `ErrSinStock`, `ErrCarritoVacio`…) que se pueden comparar con `errors.Is`.
+- Con `fmt.Errorf("%w: ...")` se agrega detalle sin perder el error base: el usuario ve *"no hay stock suficiente: solo hay 5 de Teclado mecanico"* y el código sigue reconociendo `ErrSinStock`.
+- `Gestor.Confirmar` valida en **dos pasadas** (primero revisa el stock de todo, después descuenta) para no dejar productos descontados si uno falla.
+
+### 6. Interfaz: `MetodoEnvio`
+
+```go
+type MetodoEnvio interface {
+    Nombre() string
+    Costo(subtotal float64) float64
+    DiasEntrega() int
+}
+```
+
+| Implementación | Costo | Entrega |
+|---|---|---|
+| `EnvioEstandar` | Gratis desde $50; si no, $3.50 (regla del AA1) | 3 días |
+| `EnvioExpress` | $6.00 fijo | 1 día |
+| `RetiroEnTienda` | $0 | mismo día |
+
+`Pedido` guarda un `MetodoEnvio` y solo llama a `Costo()`: no sabe cuál es. Eso es **polimorfismo**. Para agregar un envío nuevo basta con crear otro struct con esos tres métodos; `Pedido` y `Gestor` no cambian.
+
+También `Producto`, `Cliente` y `Pedido` implementan la interfaz estándar **`fmt.Stringer`** (método `String()`), por eso `fmt.Println(p)` imprime un texto legible.
+
+## Paquetes externos
+
+No se usan paquetes de terceros: solo la biblioteca estándar (`fmt`, `errors`, `strings`, `strconv`, `sort`, `bufio`, `os`, `testing`).
+
+## Próxima etapa (ECD)
+
+Cada funcionalidad se expondrá como servicio web con JSON (`net/http`), protegido con `sync.Mutex`, con más pruebas.
+
+| # | Funcionalidad | Servicio previsto |
 |---|---|---|
 | 1 | Agregar producto | `POST /productos` |
 | 2 | Ver catálogo | `GET /productos` |
@@ -129,8 +145,3 @@ El programa arranca con 3 productos y 1 cliente de ejemplo para poder probarlo e
 | 11 | Confirmar pedido | `POST /pedidos` |
 | 12 | Ver pedidos y total vendido | `GET /pedidos` |
 | 13 | Cancelar pedido | `PUT /pedidos/{id}/cancelar` |
-
-## Próximas etapas
-
-- **AA2:** los datos pasarán de maps sueltos a structs (`Producto`, `Cliente`, `Pedido`) con constructores, encapsulación, errores e interfaces (por ejemplo, una interfaz `MetodoEnvio`).
-- **ECD:** cada funcionalidad se expondrá como servicio web con JSON, protegido con `sync.Mutex` y con pruebas.

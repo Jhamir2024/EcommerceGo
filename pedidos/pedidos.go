@@ -1,5 +1,5 @@
-// Package pedidos convierte el carrito en una compra: descuenta stock, calcula
-// el envío, guarda el pedido y permite cancelarlo y ver el total vendido.
+// Package pedidos convierte un carrito en una compra (struct Pedido) y lleva el
+// historial de ventas (struct Gestor).
 package pedidos
 
 import (
@@ -11,103 +11,200 @@ import (
 	"ecommercego/productos"
 )
 
-const (
-	montoEnvioGratis = 50.0 // desde este subtotal el envío es gratis
-	costoEnvio       = 3.50
-)
-
-// Datos de los pedidos, guardados por ID de pedido. En el AA2 serán un struct Pedido.
+// Errores del paquete.
 var (
-	clienteDe = map[int]int{}         // pedidoID -> clienteID
-	totales   = map[int]float64{}     // pedidoID -> total pagado (con envío)
-	estados   = map[int]string{}      // pedidoID -> "confirmado" o "cancelado"
-	detalles  = map[int]map[int]int{} // pedidoID -> productoID -> unidades
-	siguiente = 1
+	ErrNoExiste     = errors.New("el pedido no existe")
+	ErrCarritoVacio = errors.New("el carrito esta vacio")
+	ErrSinEnvio     = errors.New("debe elegir un metodo de envio")
+	ErrYaCancelado  = errors.New("el pedido ya estaba cancelado")
 )
 
-// ConfirmarPedido compra todo lo que hay en el carrito del cliente.
-// Devuelve el ID del pedido y el total a pagar (incluye envío).
-func ConfirmarPedido(clienteID int) (int, float64, error) {
-	if !clientes.Existe(clienteID) {
-		return 0, 0, fmt.Errorf("el cliente %d no existe", clienteID)
-	}
-	subtotal, err := carrito.CalcularTotal(clienteID)
-	if err != nil {
-		return 0, 0, err
-	}
-	items := carrito.Contenido(clienteID)
+// Estado es un tipo propio (y no un string suelto) para que solo se usen los
+// valores definidos abajo.
+type Estado string
 
-	// Primero se revisa el stock de TODOS los productos y recién después se
-	// descuenta: así un pedido nunca queda a medias.
-	for productoID, unidades := range items {
-		nombre, _, disponible, err := productos.BuscarProducto(productoID)
-		if err != nil {
-			return 0, 0, err
-		}
-		if unidades > disponible {
-			return 0, 0, fmt.Errorf("no hay stock suficiente de %s", nombre)
-		}
-	}
-	for productoID, unidades := range items {
-		productos.DescontarStock(productoID, unidades) // ya se validó arriba
-	}
+// Estados posibles de un pedido.
+const (
+	Confirmado Estado = "confirmado"
+	Cancelado  Estado = "cancelado"
+)
 
-	id := siguiente
-	clienteDe[id] = clienteID
-	totales[id] = subtotal + calcularEnvio(subtotal)
-	estados[id] = "confirmado"
-	detalles[id] = items
-	siguiente++
-
-	carrito.VaciarCarrito(clienteID)
-	return id, totales[id], nil
+// Linea guarda una COPIA del nombre y del precio al momento de comprar.
+// Si mañana el producto cambia de precio, el pedido histórico no debe cambiar.
+// También guarda el puntero al producto para poder devolver el stock.
+type Linea struct {
+	producto       *productos.Producto
+	nombre         string
+	precioUnitario float64
+	cantidad       int
 }
 
-// CancelarPedido marca el pedido como cancelado y devuelve el stock.
-func CancelarPedido(pedidoID int) error {
-	estado, ok := estados[pedidoID]
-	if !ok {
-		return fmt.Errorf("el pedido %d no existe", pedidoID)
-	}
-	if estado == "cancelado" {
-		return errors.New("el pedido ya estaba cancelado")
-	}
-	for productoID, unidades := range detalles[pedidoID] {
-		// Si el producto fue eliminado del catálogo no hay stock que devolver.
-		productos.DevolverStock(productoID, unidades)
-	}
-	estados[pedidoID] = "cancelado"
-	return nil
+// Nombre del producto al momento de la compra.
+func (l Linea) Nombre() string { return l.nombre }
+
+// PrecioUnitario al momento de la compra.
+func (l Linea) PrecioUnitario() float64 { return l.precioUnitario }
+
+// Cantidad comprada.
+func (l Linea) Cantidad() int { return l.cantidad }
+
+// Subtotal de la línea.
+func (l Linea) Subtotal() float64 { return l.precioUnitario * float64(l.cantidad) }
+
+// Pedido es una compra confirmada. El método de envío se guarda como la
+// interfaz MetodoEnvio: el pedido no sabe ni le importa cuál es.
+type Pedido struct {
+	id      int
+	cliente *clientes.Cliente
+	lineas  []Linea
+	envio   MetodoEnvio
+	estado  Estado
 }
 
-// ListarPedidos devuelve una línea por pedido, ordenadas por ID.
-func ListarPedidos() []string {
-	lista := []string{}
-	for id := 1; id < siguiente; id++ {
-		nombre, _, err := clientes.BuscarCliente(clienteDe[id])
-		if err != nil {
-			nombre = "cliente desconocido"
-		}
-		lista = append(lista, fmt.Sprintf("Pedido %d - %s - $%.2f - %s", id, nombre, totales[id], estados[id]))
-	}
-	return lista
+// ID del pedido.
+func (p *Pedido) ID() int { return p.id }
+
+// Cliente que hizo el pedido.
+func (p *Pedido) Cliente() *clientes.Cliente { return p.cliente }
+
+// Envio elegido.
+func (p *Pedido) Envio() MetodoEnvio { return p.envio }
+
+// Estado actual.
+func (p *Pedido) Estado() Estado { return p.estado }
+
+// Lineas devuelve una copia de las líneas (encapsulación).
+func (p *Pedido) Lineas() []Linea {
+	copia := make([]Linea, len(p.lineas))
+	copy(copia, p.lineas)
+	return copia
 }
 
-// TotalVendido suma el dinero de los pedidos confirmados (no cuenta los cancelados).
-func TotalVendido() float64 {
+// Subtotal de los productos, sin envío.
+func (p *Pedido) Subtotal() float64 {
 	total := 0.0
-	for id, estado := range estados {
-		if estado == "confirmado" {
-			total += totales[id]
-		}
+	for _, l := range p.lineas {
+		total += l.Subtotal()
 	}
 	return total
 }
 
-// calcularEnvio aplica la regla de la tienda: envío gratis desde $50.
-func calcularEnvio(subtotal float64) float64 {
-	if subtotal >= montoEnvioGratis {
-		return 0
+// CostoEnvio delega en la interfaz: aquí ocurre el polimorfismo.
+func (p *Pedido) CostoEnvio() float64 { return p.envio.Costo(p.Subtotal()) }
+
+// Total a pagar: productos + envío.
+func (p *Pedido) Total() float64 { return p.Subtotal() + p.CostoEnvio() }
+
+// String implementa fmt.Stringer.
+func (p *Pedido) String() string {
+	return fmt.Sprintf("Pedido %d | %s | %d producto(s) | envio %s $%.2f | total $%.2f | %s",
+		p.id, p.cliente.Nombre(), len(p.lineas), p.envio.Nombre(), p.CostoEnvio(), p.Total(), p.estado)
+}
+
+// cancelar es interna: solo el Gestor puede cancelar, para que el historial
+// y el stock se mantengan coherentes.
+func (p *Pedido) cancelar() error {
+	if p.estado == Cancelado {
+		return ErrYaCancelado
 	}
-	return costoEnvio
+	for _, l := range p.lineas {
+		if err := l.producto.DevolverStock(l.cantidad); err != nil {
+			return err
+		}
+	}
+	p.estado = Cancelado
+	return nil
+}
+
+// Gestor lleva el historial de pedidos en un SLICE: el orden cronológico
+// importa (el pedido 1 va antes que el 2) y siempre se listan todos.
+type Gestor struct {
+	pedidos     []*Pedido
+	siguienteID int
+}
+
+// NewGestor crea un gestor sin pedidos.
+func NewGestor() *Gestor {
+	return &Gestor{siguienteID: 1}
+}
+
+// Confirmar convierte el carrito en un pedido con el método de envío elegido.
+//
+// Se hace en DOS PASADAS a propósito:
+//  1. revisar que haya stock de TODOS los productos;
+//  2. recién entonces descontar.
+//
+// Si se descontara mientras se revisa y el tercer producto no tuviera stock,
+// los dos primeros ya habrían perdido unidades sin que exista pedido.
+func (g *Gestor) Confirmar(c *carrito.Carrito, envio MetodoEnvio) (*Pedido, error) {
+	if c.EstaVacio() {
+		return nil, ErrCarritoVacio
+	}
+	if envio == nil {
+		return nil, ErrSinEnvio
+	}
+	items := c.Items()
+
+	// Pasada 1: solo validar.
+	for _, it := range items {
+		if !it.Producto().HayStock(it.Cantidad()) {
+			return nil, fmt.Errorf("%w: %s (hay %d, se piden %d)", productos.ErrSinStock,
+				it.Producto().Nombre(), it.Producto().Stock(), it.Cantidad())
+		}
+	}
+
+	// Pasada 2: descontar y copiar los datos de cada línea.
+	lineas := make([]Linea, 0, len(items))
+	for _, it := range items {
+		p := it.Producto()
+		if err := p.DescontarStock(it.Cantidad()); err != nil {
+			return nil, err // no debería pasar después de la pasada 1
+		}
+		lineas = append(lineas, Linea{producto: p, nombre: p.Nombre(),
+			precioUnitario: p.Precio(), cantidad: it.Cantidad()})
+	}
+
+	pedido := &Pedido{id: g.siguienteID, cliente: c.Cliente(), lineas: lineas,
+		envio: envio, estado: Confirmado}
+	g.pedidos = append(g.pedidos, pedido)
+	g.siguienteID++
+	c.Vaciar()
+	return pedido, nil
+}
+
+// Buscar devuelve el pedido con ese ID.
+func (g *Gestor) Buscar(id int) (*Pedido, error) {
+	for _, p := range g.pedidos {
+		if p.id == id {
+			return p, nil
+		}
+	}
+	return nil, fmt.Errorf("%w: ID %d", ErrNoExiste, id)
+}
+
+// Cancelar anula un pedido confirmado y devuelve el stock de sus productos.
+func (g *Gestor) Cancelar(id int) error {
+	p, err := g.Buscar(id)
+	if err != nil {
+		return err
+	}
+	return p.cancelar()
+}
+
+// Listar devuelve una copia del historial en orden cronológico.
+func (g *Gestor) Listar() []*Pedido {
+	copia := make([]*Pedido, len(g.pedidos))
+	copy(copia, g.pedidos)
+	return copia
+}
+
+// TotalVendido suma solo los pedidos confirmados (los cancelados no cuentan).
+func (g *Gestor) TotalVendido() float64 {
+	total := 0.0
+	for _, p := range g.pedidos {
+		if p.estado == Confirmado {
+			total += p.Total()
+		}
+	}
+	return total
 }
