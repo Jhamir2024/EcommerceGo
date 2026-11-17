@@ -99,7 +99,7 @@ Como los maps no tienen orden fijo, `Listar()` los pasa a un slice y los ordena 
 
 - Toda función que puede fallar devuelve `error` como último valor, y quien la llama lo revisa (en el menú, `mostrarResultado`).
 - Cada paquete declara errores base (`ErrNoExiste`, `ErrPrecio`, `ErrSinStock`, `ErrCarritoVacio`…) que se pueden comparar con `errors.Is`.
-- Con `fmt.Errorf("%w: ...")` se agrega detalle sin perder el error base: el usuario ve *"no hay stock suficiente: solo hay 5 de Teclado mecanico"* y el código sigue reconociendo `ErrSinStock`.
+- Con `fmt.Errorf("%w: ...")` se agrega detalle sin perder el error base: el usuario ve "no hay stock suficiente: solo hay 5 de Teclado mecanico" y el código sigue reconociendo `ErrSinStock`.
 - `Gestor.Confirmar` valida en dos pasadas (primero revisa el stock de todo, después descuenta) para no dejar productos descontados si uno falla.
 
 ### 6. Interfaz: `MetodoEnvio`
